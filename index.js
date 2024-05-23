@@ -4,7 +4,7 @@ const cors = require("cors");
 const app = express();
 const Note = require("./models/note");
 
-// middleware
+// middleware logger
 const requestLogger = (request, response, next) => {
   console.log("Method:", request.method);
   console.log("Path:  ", request.path);
@@ -14,13 +14,9 @@ const requestLogger = (request, response, next) => {
 };
 
 app.use(cors());
+app.use(express.static("dist"));
 app.use(express.json());
 app.use(requestLogger);
-app.use(express.static("dist"));
-
-/* generate id */
-const generateId = () =>
-  notes.length > 0 ? Math.max(...notes.map((n) => n.id)) : 0;
 
 /* home page */
 app.get("/", (request, response) => {
@@ -34,18 +30,41 @@ app.get("/api/notes", (request, response) => {
 });
 
 /* one note */
-app.get("/api/notes/:id", (request, response) => {
-  Note.findById(request.params.id).then((note) => {
-    response.json(note);
-  });
+app.get("/api/notes/:id", (request, response, next) => {
+  Note.findById(request.params.id)
+    .then((note) => {
+      if (note) {
+        response.json(note);
+      } else {
+        response.status(404).end();
+      }
+    })
+    .catch((error) => next(error));
 });
 
 /* delete one note */
-app.delete("/api/notes/:id", (request, response) => {
-  const id = Number(request.params.id);
-  notes = notes.filter((note) => note.id !== id);
+app.delete("/api/notes/:id", (request, response, next) => {
+  Note.findByIdAndDelete(request.params.id)
+    .then((result) => {
+      response.status(204).end();
+    })
+    .catch((error) => next(error));
+});
 
-  response.status(204).end();
+/* update the note */
+app.put("/api/notes/:id", (request, response, next) => {
+  const body = request.body;
+
+  const note = {
+    content: body.content,
+    important: body.important,
+  };
+
+  Note.findByIdAndUpdate(request.params.id, note, { new: true })
+    .then((updatedNote) => {
+      response.json(updatedNote);
+    })
+    .catch((error) => next(error));
 });
 
 /* add a note  */
@@ -63,6 +82,16 @@ app.post("/api/notes", (request, response) => {
   });
 });
 
+/* middleware error handler */
+const errorHandler = (error, request, response, next) => {
+  console.log(error.message);
+  if (error.name === "CastError") {
+    return response.status(400).send({ error: "malformatted id" });
+  }
+};
+app.use(errorHandler);
+
+// connexison port
 const PORT = process.env.PORT;
 app.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
